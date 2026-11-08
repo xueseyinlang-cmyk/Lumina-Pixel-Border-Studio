@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Host Simulator · pixel-border-studio module</title>
+<style>
+  body { margin:0; background:#111; color:#eee; font:13px/1.5 system-ui, "Microsoft YaHei UI"; }
+  header { padding:8px 12px; border-bottom:1px solid #333; }
+  iframe { width:100%; height:calc(100vh - 44px); border:0; background:#000; }
+  pre { margin:0; padding:8px 12px; height:120px; overflow:auto; background:#181; color:#dfd; font-size:11px; }
+</style>
+</head>
+<body>
+<header>Host Simulator（模拟 Lumina 创意工坊：握手 + image.pick + handoff.image）</header>
+<iframe id="frame" src="/ui/index.html?sim=1"></iframe>
+<pre id="log"></pre>
+<script>
+(function () {
+  'use strict';
+  var logEl = document.getElementById('log');
+  var frame = document.getElementById('frame');
+  // 允许用 ?ui=... 指定被测页面（默认是模块自身入口），便于验证宿主 CSP 下的行为
+  var uiParam = new URLSearchParams(location.search).get('ui');
+  if (uiParam) frame.src = uiParam;
+  var calls = [];
+  var handoffCount = 0;
+  var connected = false;
+
+  function log() {
+    var line = Array.prototype.slice.call(arguments).join(' ');
+    logEl.textContent += line + '\n';
+    console.log('[SIM] ' + line);
+  }
+
+  function svgBlob(size) {
+    var text = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '">' +
+      '<rect width="' + size + '" height="' + size + '" fill="#1b3b6f"/>' +
+      '<circle cx="' + (size / 2) + '" cy="' + (size / 2) + '" r="' + (size / 3) + '" fill="#ffb703"/></svg>';
+    return new Blob([text], { type: 'image/svg+xml' });
+  }
+  var PICK_MODE = new URLSearchParams(location.search).get('pick') || 'png';
+
+  function makePng() {
+    var c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    var ctx = c.getContext('2d');
+    for (var y = 0; y < 8; y++) {
+      for (var x = 0; x < 8; x++) {
+        ctx.fillStyle = 'hsl(' + (x * 40 + y * 15) + ',70%,55%)';
+        ctx.fillRect(x * 8, y * 8, 8, 8);
+      }
+    }
+    return new Promise(function (resolve) {
+      c.toBlob(function (blob) { blob.arrayBuffer().then(resolve); }, 'image/png');
+    });
+  }
+
+  function reply(port, msg, result, transfer) {
+    port.postMessage({
+      protocol: 'lumina-workshop-rpc',
+      version: 1,
+      kind: 'response',
+      requestId: msg.requestId === undefined ? String(msg.id || '0') : msg.requestId,
+      ok: true,
+      result: result
+    }, transfer || []);
+  }
+
+  function handleRequest(msg, port) {
+    // SDK 的 portMessage 走结构化克隆；requestId 在 SDK 里是字符串
+    var rid = msg.requestId || msg.id;
+    calls.push(msg.method);
+    log('rpc ' + msg.method + ' (#' + rid + ')');
+    if (msg.method === 'ui.getState') {
+      port.postMessage({ protocol: 'lumina-workshop-rpc', version: 1, kind: 'response', requestId: rid, ok: true,
+        result: { locale: 'zh-CN', theme: 'dark', tokens: {} } });
+      return;
+    }
+    if (msg.method === 'image.pick') {
+      var gen;
+      if (PICK_MODE === 'svg') gen = svgBlob(96).arrayBuffer();
+      else if (PICK_MODE === 'svg-huge') gen = svgBlob(20000).arrayBuffer();
+      else gen = makePng();
+      Promise.resolve(gen).then(function (buf) {
+        /* P2 回归点：真实宿主常回 Uint8Array 视图（Buffer/subarray）。
+           这里故意在 PNG 前塞 8 字节垃圾，只把中间那段作为视图回传：
+           模块若直接 new Blob([raw.buffer]) 就会把垃圾也算进去 → PNG 错位 → 解码失败。 */
+        var padded = new Uint8Array(buf.byteLength + 8).fill(0x7f);
+        padded.set(new Uint8Array(buf), 8);
+        var viewOnly = new Uint8Array(padded.buffer, 8, buf.byteLength);
+        port.postMessage({ protocol: 'lumina-workshop-rpc', version: 1, kind: 'response', requestId: rid, ok: true,
+          result: { pngBytes: viewOnly } }, []);
+      });
+      return;
+    }
+    if (msg.method === 'handoff.image') {
+      handoffCount += 1;
+      var payload = msg.payload || {};
+      log('handoff payload: ' + JSON.stringify({
+        moduleId: payload.moduleId,
+        moduleVersion: payload.moduleVersion,
+        pixel: [payload.pixelWidth, payload.pixelHeight],
+        pngBytes: payload.pngBytes && payload.pngBytes.byteLength,
+        recipeKeys: payload.recipeSource && Object.keys(payload.recipeSource),
+        hasSettings: !!(payload.recipeSource && payload.recipeSource.payload && payload.recipeSource.payload.settings)
+      }));
+      // 第一次返回 needs-confirmation（验证「再点一次」路径），第二次 completed
+      var status = handoffCount === 1 ? 'needs-confirmation' : 'completed';
+      port.postMessage({ protocol: 'lumina-workshop-rpc', version: 1, kind: 'response', requestId: rid, ok: true,
+        result: { status: status } });
+      return;
+    }
+    port.postMessage({ protocol: 'lumina-workshop-rpc', version: 1, kind: 'response', requestId: rid, ok: true, result: {} });
+  }
+
+  window.addEventListener('message', function (event) {
+    if (!event.data || event.data.type !== 'lumina.workshop.ready') return;
+    log('ready from module: ' + event.data.moduleId + '@' + event.data.moduleVersion + ' api=' + event.data.apiVersion);
+    var channel = new MessageChannel();
+    channel.port1.onmessage = function (ev) { handleRequest(ev.data, channel.port1); };
+    channel.port1.start();
+    event.source.postMessage({ type: 'lumina.workshop.connect', sessionId: 'sim-session-1' }, '*', [channel.port2]);
+    connected = true;
+    runScenario();
+  });
+
+  function waitFor(predicate, timeoutMs) {
+    var started = Date.now();
+    return new Promise(function (resolve, reject) {
+      (function tick() {
+        var value;
+        try { value = predicate(); } catch (e) { value = null; }
+        if (value) return resolve(value);
+        if (Date.now() - started > timeoutMs) return reject(new Error('timeout'));
+        setTimeout(tick, 100);
+      })();
+    });
+  }
+
+  function doc() { return frame.contentDocument; }
+
+  function runScenario() {
+    var pick = null;
+    waitFor(function () { var p = doc() && doc().getElementById('btnLuminaPick'); return p && !p.disabled ? p : null; }, 12000)
+      .then(function (btn) {
+        log('module UI ready: pick enabled=' + !btn.disabled);
+        btn.click();
+        return waitFor(function () {
+          var s = doc().getElementById('status');
+          return s && /渲染完成/.test(s.textContent) ? s.textContent : null;
+        }, 15000);
+      })
+      .then(function (status) {
+        log('pick→render ok: ' + status.trim());
+        var hand = doc().getElementById('btnLuminaHandoff');
+        log('handoff button: ' + (hand ? 'present' : 'missing'));
+        hand.click();
+        return waitFor(function () {
+          var b = doc().getElementById('workshopBadge');
+          return b && /确认替换/.test(b.textContent) ? b.textContent : null;
+        }, 15000);
+      })
+      .then(function (text) {
+        log('first handoff → ' + text);
+        doc().getElementById('btnLuminaHandoff').click();
+        return waitFor(function () {
+          var b = doc().getElementById('workshopBadge');
+          return b && /已交给 Lumina/.test(b.textContent) ? b.textContent : null;
+        }, 15000);
+      })
+      .then(function (text) {
+        log('second handoff → ' + text);
+        log('calls=[' + calls.join(',') + ']');
+        log('PASS=true');
+      })
+      .catch(function (err) {
+        log('FAIL: ' + err.message + ' calls=[' + calls.join(',') + ']');
+      });
+  }
+})();
+</script>
+</body>
+</html>

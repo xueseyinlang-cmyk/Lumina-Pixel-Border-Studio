@@ -1,0 +1,64 @@
+name: Release
+
+# 只由不可变 tag 触发；不接受手动 workflow_dispatch，避免出现同版本多份字节
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Fetch pinned Workshop SDK
+        run: node scripts/fetch-sdk.mjs
+
+      - name: Build single-file app
+        run: node scripts/build-web.mjs
+
+      - name: Numeric self-test
+        run: node test/selftest.mjs
+
+      - name: Package module
+        run: node scripts/package.mjs
+
+      - name: Verify version identity
+        run: |
+          set -euo pipefail
+          pkg="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
+          mod="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('manifest.json','utf8')).version)")"
+          echo "tag=$GITHUB_REF_NAME package=$pkg manifest=$mod"
+          test "$GITHUB_REF_NAME" = "v$pkg"
+          test "$pkg" = "$mod"
+
+      - name: Verify artifacts
+        run: |
+          set -euo pipefail
+          test "$(ls -1 artifacts | wc -l)" -eq 2
+          cd artifacts && sha256sum -c ./*.sha256
+          cat ./*.sha256
+
+      - name: Verify working tree is clean
+        run: git diff --exit-code
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            artifacts/*.lumina-workshop \
+            artifacts/*.lumina-workshop.sha256 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --title "像素工坊 · 图片转像素 ${GITHUB_REF_NAME}" \
+            --generate-notes

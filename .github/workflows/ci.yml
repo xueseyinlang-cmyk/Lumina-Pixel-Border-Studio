@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # main 分支保护要求这个检查名（verify），改名要同步改分支保护规则
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Fetch pinned Workshop SDK
+        run: node scripts/fetch-sdk.mjs
+
+      - name: Build single-file app
+        run: node scripts/build-web.mjs
+
+      - name: Numeric self-test
+        run: node test/selftest.mjs
+
+      - name: Package module
+        run: node scripts/package.mjs
+
+      - name: Verify version identity
+        run: |
+          set -euo pipefail
+          pkg="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json','utf8')).version)")"
+          mod="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('manifest.json','utf8')).version)")"
+          echo "package.json=$pkg manifest.json=$mod"
+          test "$pkg" = "$mod"
+
+      - name: Verify artifacts
+        run: |
+          set -euo pipefail
+          test "$(ls -1 artifacts | wc -l)" -eq 2
+          cd artifacts && sha256sum -c ./*.sha256
+
+      - name: Verify working tree is clean
+        run: git diff --exit-code

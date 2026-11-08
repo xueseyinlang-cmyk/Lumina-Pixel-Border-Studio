@@ -1,0 +1,29 @@
+GNU GENERAL PUBLIC LICENSE
+Version 3, 29 June 2007
+
+Copyright (C) 2026 Pixel Border Studio
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program. If not, see <https://www.gnu.org/licenses/>.
+
+--------------------------------------------------------------------------
+分发说明 / Distribution note
+
+本模块内联了 @lumina/workshop-sdk 1.0.2（GPL-3.0-or-later，源仓库
+https://github.com/lumina-layer-studio/Lumina-Workshop-SDK ，Release v1.0.2，
+sha256 f23f8d0b5181116e8173c0a6f4171405980269615f429be4805973ec4efa93ad）。
+因此本模块整体按 GPL-3.0-or-later 分发。
+
+主应用源码（未内联 SDK 的单文件版）在 pixel-border-studio 仓库内，可单独按项目原许可证使用；
+对应源码获取方式：向发布者索取，或在构建目录执行 `node web/tools/build.mjs` 重建。
+
+完整 GPLv3 文本：https://www.gnu.org/licenses/gpl-3.0.txt

@@ -1,0 +1,21 @@
+{
+  "name": "@lumina-layer-studio/pixel-border-studio",
+  "version": "1.0.5",
+  "private": true,
+  "type": "module",
+  "description": "Pixel-art converter for the Lumina Studio Creative Workshop: automatic grid detection, palette quantization, per-cell black border controls, in-app pixel editor and PNG/handoff export.",
+  "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "sdk": "node scripts/fetch-sdk.mjs",
+    "build": "node scripts/build-web.mjs",
+    "test": "node test/selftest.mjs",
+    "package": "node scripts/package.mjs",
+    "verify": "node scripts/build-web.mjs && node test/selftest.mjs && node scripts/package.mjs"
+  },
+  "dependencies": {
+    "@lumina/workshop-sdk": "https://github.com/lumina-layer-studio/Lumina-Workshop-SDK/releases/download/v1.0.2/lumina-workshop-sdk-1.0.2.tgz"
+  }
+}

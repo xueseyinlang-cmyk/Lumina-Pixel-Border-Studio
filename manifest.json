@@ -1,0 +1,34 @@
+{
+  "manifestVersion": 1,
+  "id": "studio.pixelborder.pixelator",
+  "version": "1.0.5",
+  "name": {
+    "zh-CN": "像素工坊 · 图片转像素",
+    "en-US": "Pixel Border Studio"
+  },
+  "description": {
+    "zh-CN": "把图片转成像素画：自动/手动网格、调色板量化、最近邻放大，并可调节像素块之间的黑边（粗细、颜色、不透明度、位置、混合方式、仅强对比处、圆角、双色描边），内置像素编辑器与 1×/色卡导出。",
+    "en-US": "Pixelate images with auto/manual grids and palette quantization, adjust black borders (width, colour, opacity, blend, rounded, dual colour), edit pixels and export PNG."
+  },
+  "publisher": "Pixel Border Studio",
+  "workshopApi": {
+    "min": "1.0.0",
+    "maxExclusive": "2.0.0"
+  },
+  "luminaVersion": {
+    "min": "2.0.0"
+  },
+  "entrypoints": {
+    "ui": "ui/index.html"
+  },
+  "permissions": [
+    {
+      "name": "image.pick",
+      "reason": "由用户从 Lumina 工程中选择一张图片，作为像素化输入"
+    },
+    {
+      "name": "handoff.image",
+      "reason": "把调好黑边的像素化 PNG 交给 Lumina 的转换器继续做 LUT/材料/3MF"
+    }
+  ]
+}

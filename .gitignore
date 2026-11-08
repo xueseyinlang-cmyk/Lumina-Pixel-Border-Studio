@@ -1,0 +1,19 @@
+# 构建产物（由 scripts/*.mjs 生成）
+dist/
+artifacts/
+
+# SDK 由 scripts/fetch-sdk.mjs 拉取（固定版本 + sha256 校验）
+.sdk/
+
+# 依赖目录（本仓库不需要 npm install，仅防误提交）
+node_modules/
+
+# 杂项
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+
+# install-to-lumina.cmd 的临时响应文件
+_*.json
