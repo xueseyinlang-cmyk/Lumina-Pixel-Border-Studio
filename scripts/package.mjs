@@ -50,9 +50,14 @@ function sdkBundle() {
     .join('\n')
     .replace(/^export\s+/gm, '');
   const body = need.map((f) => `/* ---- ${f} ---- */\n` + strip(readFileSync(join(sdkDir, 'dist', f), 'utf8'))).join('\n');
-  const license = existsSync(join(sdkDir, 'LICENSE'))
-    ? readFileSync(join(sdkDir, 'LICENSE'), 'utf8').split('\n')[0].slice(0, 120)
-    : 'GPL-3.0-or-later';
+  /* PR 问题 2：旧实现只取 .sdk/LICENSE 的第一行，最终 ZIP 里没有任何 SDK 版权声明。
+     现在把 SPDX 与版权行完整内联进构建产物注释；完整 GPL 文本由包内 LICENSE 承载（见下方 validate）。 */
+  const sdkLicenseLines = existsSync(join(sdkDir, 'LICENSE'))
+    ? readFileSync(join(sdkDir, 'LICENSE'), 'utf8').split('\n').map((l) => l.trim()).filter(Boolean)
+    : [];
+  const sdkSpdx = sdkLicenseLines.find((l) => /^SPDX-License-Identifier:/.test(l)) || 'SPDX-License-Identifier: GPL-3.0-or-later';
+  const sdkCopyright = sdkLicenseLines.find((l) => /^Copyright/.test(l)) || 'Copyright (C) Lumina Layer Studio contributors';
+  const license = sdkSpdx + '; ' + sdkCopyright + '; 版权与许可全文见包内 LICENSE';
   return `/* @lumina/workshop-sdk 1.0.2 — ${license} */\n(function () {\n'use strict';\n${body}\nwindow.LuminaWorkshop = { connectWorkshop, WorkshopClientError, WORKSHOP_API_VERSION, WORKSHOP_MANIFEST_VERSION, WORKSHOP_RPC_VERSION, WORKSHOP_PERMISSION_NAMES, applyWorkshopUiState, createRequestEnvelope };\n})();\n`;
 }
 
@@ -72,7 +77,7 @@ function buildHtml() {
 }
 
 /* ---------- 4. 校验 ---------- */
-function validate(html, iconBuf) {
+function validate(html, iconBuf, licenseText) {
   const problems = [];
   const names = new Set(REQUIRED);
   if (manifest.manifestVersion !== 1) problems.push('manifestVersion 必须是 1');
@@ -123,6 +128,13 @@ function validate(html, iconBuf) {
       if (w !== h) problems.push('图标建议为正方形（当前 ' + w + '×' + h + '）');
     }
   }
+  /* PR 问题 2 非回归：最终包必须同时带模块与 SDK 的版权声明，并附 GPL-3.0 全文（不能只剩一个链接）。 */
+  const lic = String(licenseText || '');
+  if (!/Copyright \(C\) 2026 Pixel Border Studio/.test(lic)) problems.push('LICENSE 缺少模块版权声明');
+  if (!/Copyright \(C\) Lumina Layer Studio contributors/.test(lic)) problems.push('LICENSE 缺少 SDK 版权声明');
+  if (!/Version 3, 29 June 2007/.test(lic)) problems.push('LICENSE 缺少 GPL-3.0 标题行');
+  if (lic.length < 20000) problems.push('LICENSE 未附 GPL-3.0 全文（当前 ' + lic.length + ' 字符）');
+
   const htmlBytes = Buffer.byteLength(html, 'utf8');
   if (htmlBytes > MAX_PACKAGE_BYTES) problems.push('ui/index.html 过大');
   for (const n of names) if (!n) problems.push('空文件名');
@@ -221,20 +233,25 @@ const iconPath = join(moduleDir, 'assets', 'icon.png');
 if (!existsSync(iconPath)) fail('缺少 assets/icon.png');
 const iconBuf = readFileSync(iconPath);
 
-const problems = validate(html, iconBuf);
+const moduleLicense = readFileSync(join(moduleDir, 'LICENSE'), 'utf8');
+const problems = validate(html, iconBuf, moduleLicense);
 if (problems.length) fail('本地校验未通过：\n  - ' + problems.join('\n  - '));
 
 writeFileSync(join(distDir, 'ui', 'index.html'), html, 'utf8');
 writeFileSync(join(distDir, 'manifest.json'), manifestRaw, 'utf8');
 writeFileSync(join(distDir, 'assets', 'icon.png'), iconBuf);
 writeFileSync(join(distDir, 'README.md'), readFileSync(join(moduleDir, 'README.md'), 'utf8'), 'utf8');
-writeFileSync(join(distDir, 'LICENSE'), readFileSync(join(moduleDir, 'LICENSE'), 'utf8'), 'utf8');
+writeFileSync(join(distDir, 'LICENSE'), moduleLicense, 'utf8');
 
 /* release 资产命名沿用组织约定：<module-id>-<version>.lumina-workshop */
 const outName = `${manifest.id}-${manifest.version}.lumina-workshop`;
-if (existsSync(artifactsDir)) rmSync(artifactsDir, { recursive: true, force: true });
+/* PR 问题 3：发布新补丁版本时不得覆盖旧文件。旧实现会 rmSync 整个 artifacts/，
+   把上一个版本已发布的包一起删掉；这里只清理本次同名产物，历史版本原样保留。 */
 mkdirSync(artifactsDir, { recursive: true });
 const outPath = join(artifactsDir, outName);
+for (const stale of [outPath, outPath + '.sha256']) {
+  if (existsSync(stale)) rmSync(stale, { force: true });
+}
 const packaged = ['manifest.json', 'ui/index.html', 'assets/icon.png', 'README.md', 'LICENSE'];
 const zipInfo = zipPackage(distDir, packaged, outPath);
 const bytes = statSync(outPath).size;

@@ -1,6 +1,6 @@
 {
   "name": "@lumina-layer-studio/pixel-border-studio",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "type": "module",
   "description": "Pixel-art converter for the Lumina Studio Creative Workshop: automatic grid detection, palette quantization, per-cell black border controls, in-app pixel editor and PNG/handoff export.",

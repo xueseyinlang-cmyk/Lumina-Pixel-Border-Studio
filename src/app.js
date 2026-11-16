@@ -616,6 +616,16 @@
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
 
+  /* 宿主 iframe 内没有本地下载：宿主隔离会拦掉 <a download> 且不抛错，
+     旧代码照样打「已导出」= 伪报成功（PR 问题 1）。
+     这里统一识别宿主环境，宿主内如实反馈「不可用」，交付路径只有「交给 Lumina」。 */
+  function hostEmbedded() {
+    return window.PBS_MODULE_MODE === true || window.parent !== window;
+  }
+  function hostExportBlocked(kind) {
+    setStatus('宿主内不支持本地下载：' + kind + ' 未生成。请用页头「交给 Lumina」把结果交付到工程。', true);
+  }
+
   function baseName() {
     const s = $('fileInfo').textContent || 'pixel';
     return s.split(' · ')[0].replace(/\.[^.]+$/, '') || 'pixel';
@@ -623,6 +633,7 @@
 
   async function exportPng() {
     if (!state.source) return;
+    if (hostEmbedded()) { hostExportBlocked('导出 PNG'); return; }
     setStatus('导出中…');
     try {
       const res = await renderForExport();
@@ -638,6 +649,7 @@
 
   async function exportOneX() {
     if (!state.result) return;
+    if (hostEmbedded()) { hostExportBlocked('导出 1×'); return; }
     const lg = state.result.logical;
     const cvs = canvasFrom(lg);
     cvs.toBlob((blob) => {
@@ -649,6 +661,7 @@
   function exportPalette() {
     const r = state.result;
     if (!r) return;
+    if (hostEmbedded()) { hostExportBlocked('色卡'); return; }
     const pal = r.palette;
     const sw = 32, cols = Math.min(pal.length, 12), rows = Math.ceil(pal.length / cols);
     const cvs = document.createElement('canvas');

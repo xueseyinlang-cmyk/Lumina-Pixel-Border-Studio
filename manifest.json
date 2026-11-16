@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "id": "studio.pixelborder.pixelator",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "name": {
     "zh-CN": "像素工坊 · 图片转像素",
     "en-US": "Pixel Border Studio"
